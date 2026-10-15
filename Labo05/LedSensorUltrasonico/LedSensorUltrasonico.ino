@@ -3,8 +3,8 @@
 #include "Adafruit_MQTT_Client.h"
 
 // ---------------------- CONFIGURACIÓN WI-FI ----------------------
-#define WLAN_SSID   "ARTEFACTOS"
-#define WLAN_PASS   "87654321"
+#define WLAN_SSID   "NxT"
+#define WLAN_PASS   "12345678"
 
 // ---------------------- CONFIGURACIÓN ADAFRUIT IO ----------------------
 #define AIO_SERVER      "io.adafruit.com"
