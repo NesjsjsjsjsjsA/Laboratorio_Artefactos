@@ -1,38 +1,87 @@
-const int pinTrig = 4;
-const int pinEcho = 5;
+#include <WiFi.h>
+#include "Adafruit_MQTT.h"
+#include "Adafruit_MQTT_Client.h"
+
+#define WLAN_SSID       "TU_WIFI"
+#define WLAN_PASS       "TU_CONTRASEÑA"
+
+#define AIO_SERVER      "io.adafruit.com"
+#define AIO_SERVERPORT  1883
+#define AIO_USERNAME    "TU_USUARIO_ADAFRUIT"
+#define AIO_KEY         "TU_LLAVE_AIO"
+
+#define PIN_LM35 34
+#define PIN_LED 2
+
+WiFiClient client;
+Adafruit_MQTT_Client mqtt(&client, AIO_SERVER, AIO_SERVERPORT, AIO_USERNAME, AIO_KEY);
+
+Adafruit_MQTT_Publish publicador_temp = Adafruit_MQTT_Publish(&mqtt, AIO_USERNAME "/feeds/temperatura");
+Adafruit_MQTT_Subscribe suscriptor_led = Adafruit_MQTT_Subscribe(&mqtt, AIO_USERNAME "/feeds/led");
 
 void setup() {
   Serial.begin(115200);
-  delay(3000); 
+  pinMode(PIN_LED, OUTPUT);
   
-  pinMode(pinTrig, OUTPUT);
-  pinMode(pinEcho, INPUT);
-  
-  digitalWrite(pinTrig, LOW);
-  Serial.println("\n--- Iniciando prueba HC-SR04 con Pulso Extendido ---");
+  Serial.print("Conectando a WiFi...");
+  WiFi.begin(WLAN_SSID, WLAN_PASS);
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println(" ¡Conectado!");
+
+  mqtt.subscribe(&suscriptor_led);
 }
 
 void loop() {
-  digitalWrite(pinTrig, LOW);
-  delayMicroseconds(2);
-  
-  // Hack: Pulso de 50 microsegundos (en lugar de 10) para asegurar 
-  // que el sensor de 5V detecte la señal de 3.3V del ESP32.
-  digitalWrite(pinTrig, HIGH);
-  delay(10);
-  digitalWrite(pinTrig, LOW);
-  
-  // Timeout de 30ms para evitar cuelgues
-  long duracion = pulseIn(pinEcho, HIGH, 30000);
-  
-  if (duracion == 0) {
-    Serial.println("Error: Timeout / 0.00 cm");
-  } else {
-    float distancia = (duracion * 0.0343) / 2;
-    Serial.print("Distancia: ");
-    Serial.print(distancia);
-    Serial.println(" cm");
+  MQTT_connect();
+
+  Adafruit_MQTT_Subscribe *subscription;
+  while ((subscription = mqtt.readSubscription(5000))) {
+    if (subscription == &suscriptor_led) {
+      Serial.print("Comando recibido en el LED: ");
+      Serial.println((char *)suscriptor_led.lastread);
+      
+      int estado_led = atoi((char *)suscriptor_led.lastread);
+      digitalWrite(PIN_LED, estado_led);
+    }
   }
   
-  delay(500); 
+  int lectura_adc = analogRead(PIN_LM35);
+  
+  float voltaje = (lectura_adc / 4095.0) * 3300.0;
+  float temperatura_c = voltaje / 10.0;
+
+  Serial.print("Enviando temperatura: ");
+  Serial.print(temperatura_c);
+  Serial.println(" C");
+
+  if (!publicador_temp.publish(temperatura_c)) {
+    Serial.println("Error al publicar.");
+  } else {
+    Serial.println("¡Publicación exitosa!");
+  }
+
+  delay(10000);
+}
+
+void MQTT_connect() {
+  int8_t ret;
+  if (mqtt.connected()) {
+    return;
+  }
+  Serial.print("Conectando a MQTT... ");
+  uint8_t retries = 3;
+  while ((ret = mqtt.connect()) != 0) {
+       Serial.println(mqtt.connectErrorString(ret));
+       Serial.println("Reintentando conexión MQTT en 5 segundos...");
+       mqtt.disconnect();
+       delay(5000);
+       retries--;
+       if (retries == 0) {
+         while (1);
+       }
+  }
+  Serial.println("¡MQTT Conectado!");
 }
